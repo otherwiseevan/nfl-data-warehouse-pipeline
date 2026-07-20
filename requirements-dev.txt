@@ -1,0 +1,7 @@
+# Only needed if you want to run DAG integrity tests locally
+# (importing/parsing the DAG file without spinning up full Airflow via Docker).
+# Not required for the pipeline to run — Docker's Airflow image already
+# has Airflow installed.
+
+apache-airflow==2.9.3
+pytest==8.2.2

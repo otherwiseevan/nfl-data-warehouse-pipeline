@@ -1,0 +1,29 @@
+# --- Python ---
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Secrets / env ---
+.env
+
+# --- Generated data (not source, don't commit) ---
+data/
+*.duckdb
+*.duckdb.wal
+
+# --- Airflow ---
+logs/
+airflow.db
+airflow.cfg
+standalone_admin_password.txt
+
+# --- dbt ---
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store

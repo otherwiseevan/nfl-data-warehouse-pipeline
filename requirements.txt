@@ -1,0 +1,13 @@
+# --- Data ingestion ---
+nfl_data_py==0.3.2
+pandas==2.2.2
+
+# --- Warehouse ---
+duckdb==1.0.0
+
+# --- Transformation ---
+dbt-core==1.8.4
+dbt-duckdb==1.8.1
+
+# --- Utilities ---
+python-dotenv==1.0.1
