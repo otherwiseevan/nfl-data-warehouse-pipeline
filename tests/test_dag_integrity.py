@@ -12,6 +12,7 @@ import os
 import sys
 
 from airflow.models import DagBag
+from airflow.utils.dag_cycle_tester import check_cycle
 
 DAGS_FOLDER = os.path.join(os.path.dirname(__file__), "..", "dags")
 
@@ -53,7 +54,9 @@ def test_nfl_pipeline_has_no_cycles():
     """DagBag parsing already validates for cycles on load (a cyclic
     DAG would show up in dag_bag.import_errors), but this makes the
     intent explicit and fails loudly with a clear message if that
-    ever changes."""
+    ever changes. DAG.test_cycle() was removed in newer Airflow
+    versions -- check_cycle is the standalone replacement, the same
+    function DagBag calls internally during parsing."""
     dag_bag = DagBag(dag_folder=DAGS_FOLDER, include_examples=False)
     dag = dag_bag.dags["nfl_data_pipeline"]
-    dag.test_cycle()  # raises AirflowDagCycleException if a cycle exists
+    check_cycle(dag)  # raises AirflowDagCycleException if a cycle exists
