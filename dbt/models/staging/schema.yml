@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: stg_pbp
+    description: "Cleaned play-by-play data, one row per play."
+    columns:
+      - name: game_id
+        description: "Unique identifier for the game."
+        tests:
+          - not_null
+      - name: play_type
+        description: "Type of play (pass, run, punt, etc.)."
+        tests:
+          - not_null
+      - name: epa
+        description: "Expected points added for the play."
+
+  - name: stg_rosters
+    description: "Cleaned weekly roster data, one row per player per week."
+    columns:
+      - name: player_id
+        description: "Unique identifier for the player."
+        tests:
+          - not_null
+      - name: team
+        description: "Team abbreviation."
+        tests:
+          - not_null

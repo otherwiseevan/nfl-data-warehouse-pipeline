@@ -1,23 +1,30 @@
 """
-Example Airflow DAG structure: NFL data pipeline writing to DuckDB.
+NFL data pipeline: raw -> staging -> marts, in DuckDB.
 
-Layout mirrors a raw -> staging -> marts warehouse pattern.
-DuckDB lives as a single file on a mounted volume, written to
-sequentially by each task (DuckDB does not support concurrent
-writers, so tasks that touch the DB must run in series, not
-parallel -- that constraint is itself worth calling out in your
-README as a design decision).
+Extraction (pulling from nfl_data_py) stays as PythonOperator tasks,
+since that's genuine Python logic. Staging and marts are now handled
+by dbt instead of raw SQL strings -- dbt owns the transformation
+layer, which gives us lineage, docs, and tests (dbt test) for free.
 """
 
 from datetime import datetime, timedelta
 
 import duckdb
 import nfl_data_py as nfl
-import pandas as pd
 from airflow import DAG
+from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 
 DB_PATH = "/opt/airflow/data/nfl_warehouse.duckdb"
+DBT_PROJECT_DIR = "/opt/airflow/dbt"
+
+# dbt commands need to run from the project dir, with profiles.yml
+# resolved from the same folder (repo-local profiles, not ~/.dbt/),
+# and DBT_DUCKDB_PATH pointing at the container's mounted DB path.
+DBT_ENV_PREFIX = (
+    f"cd {DBT_PROJECT_DIR} && "
+    f"export DBT_DUCKDB_PATH={DB_PATH} && "
+)
 
 default_args = {
     "owner": "yeb",
@@ -28,9 +35,9 @@ default_args = {
 dag = DAG(
     dag_id="nfl_data_pipeline",
     default_args=default_args,
-    description="Weekly NFL data ingestion -> staging -> marts",
+    description="Weekly NFL data ingestion -> dbt staging -> dbt marts",
     schedule_interval="0 6 * * 2",  # Tuesdays 6am, after MNF
-    start_date=datetime(2026, 9, 1),
+    start_date=datetime(2024, 9, 1),
     catchup=False,
     tags=["nfl", "warehouse"],
 )
@@ -38,9 +45,9 @@ dag = DAG(
 
 def extract_pbp(**context):
     """Pull play-by-play data via nfl_data_py, land as raw table."""
-    season = context["logical_date"].year
-    df = nfl.import_pbp_data([season])
+    season = 2024  # hardcoded for now — 2026 season hasn't started yet
 
+    df = nfl.import_pbp_data([season])
     con = duckdb.connect(DB_PATH)
     con.execute("CREATE SCHEMA IF NOT EXISTS raw")
     con.execute("CREATE OR REPLACE TABLE raw.pbp AS SELECT * FROM df")
@@ -49,53 +56,12 @@ def extract_pbp(**context):
 
 def extract_rosters(**context):
     """Pull weekly rosters, land as raw table."""
-    season = context["logical_date"].year
-    df = nfl.import_weekly_rosters([season])
+    season = 2024  # hardcoded for now — 2026 season hasn't started yet
 
+    df = nfl.import_weekly_rosters([season])
     con = duckdb.connect(DB_PATH)
     con.execute("CREATE SCHEMA IF NOT EXISTS raw")
     con.execute("CREATE OR REPLACE TABLE raw.rosters AS SELECT * FROM df")
-    con.close()
-
-
-def build_staging(**context):
-    """
-    Clean/rename raw tables into staging.
-    In a real build, this is where you'd run `dbt run --select staging`
-    instead of raw SQL -- shown inline here just to illustrate the layer.
-    """
-    con = duckdb.connect(DB_PATH)
-    con.execute("CREATE SCHEMA IF NOT EXISTS staging")
-    con.execute("""
-        CREATE OR REPLACE TABLE staging.pbp_clean AS
-        SELECT
-            game_id,
-            week,
-            posteam AS possession_team,
-            defteam AS defense_team,
-            play_type,
-            yards_gained,
-            epa
-        FROM raw.pbp
-        WHERE play_type IS NOT NULL
-    """)
-    con.close()
-
-
-def build_marts(**context):
-    """Aggregate staging into analysis-ready fact tables."""
-    con = duckdb.connect(DB_PATH)
-    con.execute("CREATE SCHEMA IF NOT EXISTS marts")
-    con.execute("""
-        CREATE OR REPLACE TABLE marts.team_week_epa AS
-        SELECT
-            possession_team AS team,
-            week,
-            COUNT(*) AS plays,
-            AVG(epa) AS avg_epa
-        FROM staging.pbp_clean
-        GROUP BY possession_team, week
-    """)
     con.close()
 
 
@@ -111,19 +77,27 @@ extract_rosters_task = PythonOperator(
     dag=dag,
 )
 
-staging_task = PythonOperator(
-    task_id="build_staging",
-    python_callable=build_staging,
+# --threads 1 matches profiles.yml -- DuckDB can't handle concurrent
+# writers, so dbt's model parallelism has to be turned off here.
+dbt_run_task = BashOperator(
+    task_id="dbt_run",
+    bash_command=(
+        DBT_ENV_PREFIX
+        + f"dbt run --profiles-dir {DBT_PROJECT_DIR} --project-dir {DBT_PROJECT_DIR} --threads 1"
+    ),
     dag=dag,
 )
 
-marts_task = PythonOperator(
-    task_id="build_marts",
-    python_callable=build_marts,
+dbt_test_task = BashOperator(
+    task_id="dbt_test",
+    bash_command=(
+        DBT_ENV_PREFIX
+        + f"dbt test --profiles-dir {DBT_PROJECT_DIR} --project-dir {DBT_PROJECT_DIR} --threads 1"
+    ),
     dag=dag,
 )
 
-# Extraction tasks can run in parallel (separate raw tables),
-# but staging/marts must run after both, and in series with
-# each other since they share the DuckDB file.
-[extract_pbp_task, extract_rosters_task] >> staging_task >> marts_task
+# Extraction tasks can run in parallel (separate raw tables, separate
+# connections that open/close quickly). dbt run must wait on both,
+# and dbt test must wait on dbt run.
+[extract_pbp_task, extract_rosters_task] >> dbt_run_task >> dbt_test_task

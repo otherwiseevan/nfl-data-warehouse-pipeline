@@ -1,0 +1,11 @@
+nfl_warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # DBT_DUCKDB_PATH lets this resolve correctly whether dbt is run
+      # inside the Airflow container (/opt/airflow/data/...) or locally
+      # from your venv (./data/...). Set the env var accordingly, or
+      # it falls back to the local-venv-relative path.
+      path: "{{ env_var('DBT_DUCKDB_PATH', '../data/nfl_warehouse.duckdb') }}"
+      threads: 1

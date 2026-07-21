@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: pbp
+        description: "Raw play-by-play data landed by the extract_pbp Airflow task."
+      - name: rosters
+        description: "Raw weekly roster data landed by the extract_rosters Airflow task."

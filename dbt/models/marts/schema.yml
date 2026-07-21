@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: fct_team_week_epa
+    description: "One row per team per week, aggregating play-level EPA into team performance."
+    columns:
+      - name: team
+        tests:
+          - not_null
+      - name: week
+        tests:
+          - not_null
+      - name: plays
+        tests:
+          - not_null
+
+  - name: fct_player_week
+    description: "One row per player per week, with roster status. Feeds the fantasy football ML project downstream."
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+      - name: week
+        tests:
+          - not_null
+      - name: sleeper_id
+        tests:
+          - not_null:
+              config:
+                severity: warn
