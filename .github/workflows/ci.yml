@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  dag-integrity:
+    name: Airflow DAG integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run DAG integrity tests
+        run: pytest tests/test_dag_integrity.py -v
+
+  dbt-checks:
+    name: dbt parse / compile check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: pip install dbt-core dbt-duckdb
+
+      - name: dbt parse
+        working-directory: dbt
+        env:
+          # dbt parse doesn't touch real data, but the profile still
+          # needs this env var set to resolve -- points at a throwaway
+          # path since no connection is actually opened.
+          DBT_DUCKDB_PATH: /tmp/ci_placeholder.duckdb
+        run: dbt parse --profiles-dir . --project-dir .

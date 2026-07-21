@@ -16,6 +16,7 @@ cleaned as (
         epa
     from source
     where play_type is not null
+      and posteam is not null  -- excludes no_play rows (timeouts, presnap penalties, etc.) with no possessing team
 
 )
 
