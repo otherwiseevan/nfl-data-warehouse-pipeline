@@ -1,6 +1,7 @@
 # --- Data ingestion ---
 nfl_data_py==0.3.2
 pandas==2.2.2
+requests==2.32.3
 
 # --- Warehouse ---
 duckdb==1.0.0

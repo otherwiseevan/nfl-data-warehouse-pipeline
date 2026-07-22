@@ -14,6 +14,10 @@ import nfl_data_py as nfl
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
+import requests
+import pandas as pd
+
+from airflow.models import Variable
 
 DB_PATH = "/opt/airflow/data/nfl_warehouse.duckdb"
 DBT_PROJECT_DIR = "/opt/airflow/dbt"
@@ -51,7 +55,6 @@ def extract_pbp(**context):
     when a season's data doesn't exist yet (e.g. the current season
     before it's started), so this catches that and just skips the
     season rather than failing the whole task."""
-    import pandas as pd
 
     current_year = datetime.now().year
     seasons = list(range(2024, current_year + 1))
@@ -74,7 +77,6 @@ def extract_pbp(**context):
 def extract_rosters(**context):
     """Pull weekly rosters, land as raw table. Same per-season +
     try/except pattern as extract_pbp."""
-    import pandas as pd
 
     current_year = datetime.now().year
     seasons = list(range(2024, current_year + 1))
@@ -93,6 +95,55 @@ def extract_rosters(**context):
     con.execute("CREATE OR REPLACE TABLE raw.rosters AS SELECT * FROM df")
     con.close()
 
+import requests
+
+
+
+
+def extract_sleeper_league(**context):
+    """Pull current league rosters and team/owner info from the
+    Sleeper API. Unlike nfl_data_py's historical data, this is a
+    live snapshot of your specific league right now -- there's no
+    concept of 'season' here in the same sense, just current state.
+    Sleeper's player_id matches the sleeper_id column already
+    present in stg_rosters/fct_player_week, so this joins directly
+    without any fuzzy matching."""
+    league_id = Variable.get("SLEEPER_LEAGUE_ID")
+    rosters_resp = requests.get(
+        f"https://api.sleeper.app/v1/league/{league_id}/rosters"
+    )
+    rosters_resp.raise_for_status()
+    rosters = rosters_resp.json()
+
+    users_resp = requests.get(
+        f"https://api.sleeper.app/v1/league/{league_id}/users"
+    )
+    users_resp.raise_for_status()
+    users = users_resp.json()
+
+    # users keyed by user_id so we can look up owner display names
+    users_by_id = {u["user_id"]: u.get("display_name", "unknown") for u in users}
+
+    # Flatten: one row per player per roster, tagging the owner name
+    rows = []
+    for roster in rosters:
+        owner_name = users_by_id.get(roster.get("owner_id"), "unknown")
+        for player_id in roster.get("players") or []:
+            rows.append({
+                "roster_id": roster["roster_id"],
+                "owner_id": roster.get("owner_id"),
+                "owner_name": owner_name,
+                "sleeper_id": player_id,
+                "wins": roster.get("settings", {}).get("wins"),
+                "losses": roster.get("settings", {}).get("losses"),
+            })
+
+    df = pd.DataFrame(rows)
+
+    con = duckdb.connect(DB_PATH)
+    con.execute("CREATE SCHEMA IF NOT EXISTS raw")
+    con.execute("CREATE OR REPLACE TABLE raw.sleeper_rosters AS SELECT * FROM df")
+    con.close()
 
 extract_pbp_task = PythonOperator(
     task_id="extract_pbp",
@@ -103,6 +154,12 @@ extract_pbp_task = PythonOperator(
 extract_rosters_task = PythonOperator(
     task_id="extract_rosters",
     python_callable=extract_rosters,
+    dag=dag,
+)
+
+extract_sleeper_task = PythonOperator(
+    task_id="extract_sleeper_league",
+    python_callable=extract_sleeper_league,
     dag=dag,
 )
 
@@ -129,4 +186,4 @@ dbt_test_task = BashOperator(
 # Extraction tasks can run in parallel (separate raw tables, separate
 # connections that open/close quickly). dbt run must wait on both,
 # and dbt test must wait on dbt run.
-[extract_pbp_task, extract_rosters_task] >> dbt_run_task >> dbt_test_task
+[extract_pbp_task, extract_rosters_task, extract_sleeper_task] >> dbt_run_task >> dbt_test_task
