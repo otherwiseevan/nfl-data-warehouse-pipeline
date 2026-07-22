@@ -36,7 +36,7 @@ dag = DAG(
     dag_id="nfl_data_pipeline",
     default_args=default_args,
     description="Weekly NFL data ingestion -> dbt staging -> dbt marts",
-    schedule_interval="0 6 * * 2",  # Tuesdays 6am, after MNF
+    schedule="0 6 * * 2",  # Tuesdays 6am, after MNF
     start_date=datetime(2024, 9, 1),
     catchup=False,
     tags=["nfl", "warehouse"],
@@ -44,10 +44,27 @@ dag = DAG(
 
 
 def extract_pbp(**context):
-    """Pull play-by-play data via nfl_data_py, land as raw table."""
-    season = 2024  # hardcoded for now — 2026 season hasn't started yet
+    """Pull play-by-play data via nfl_data_py, land as raw table.
+    Pulled one season at a time and concatenated (see extract_rosters
+    for why). Also wrapped per-season in a try/except -- nfl_data_py
+    throws a confusing secondary NameError instead of a clean message
+    when a season's data doesn't exist yet (e.g. the current season
+    before it's started), so this catches that and just skips the
+    season rather than failing the whole task."""
+    import pandas as pd
 
-    df = nfl.import_pbp_data([season])
+    current_year = datetime.now().year
+    seasons = list(range(2024, current_year + 1))
+
+    frames = []
+    for season in seasons:
+        try:
+            frames.append(nfl.import_pbp_data([season]))
+        except Exception as e:
+            print(f"Skipping season {season}: {e}")
+
+    df = pd.concat(frames, ignore_index=True)
+
     con = duckdb.connect(DB_PATH)
     con.execute("CREATE SCHEMA IF NOT EXISTS raw")
     con.execute("CREATE OR REPLACE TABLE raw.pbp AS SELECT * FROM df")
@@ -55,10 +72,22 @@ def extract_pbp(**context):
 
 
 def extract_rosters(**context):
-    """Pull weekly rosters, land as raw table."""
-    season = 2024  # hardcoded for now — 2026 season hasn't started yet
+    """Pull weekly rosters, land as raw table. Same per-season +
+    try/except pattern as extract_pbp."""
+    import pandas as pd
 
-    df = nfl.import_weekly_rosters([season])
+    current_year = datetime.now().year
+    seasons = list(range(2024, current_year + 1))
+
+    frames = []
+    for season in seasons:
+        try:
+            frames.append(nfl.import_weekly_rosters([season]))
+        except Exception as e:
+            print(f"Skipping season {season}: {e}")
+
+    df = pd.concat(frames, ignore_index=True)
+
     con = duckdb.connect(DB_PATH)
     con.execute("CREATE SCHEMA IF NOT EXISTS raw")
     con.execute("CREATE OR REPLACE TABLE raw.rosters AS SELECT * FROM df")

@@ -7,6 +7,7 @@ with source as (
 cleaned as (
 
     select
+        season,
         game_id,
         week,
         posteam as possession_team,
