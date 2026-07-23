@@ -28,3 +28,15 @@ models:
         description: "Team abbreviation."
         data_tests:
           - not_null
+
+  - name: stg_sleeper_rosters
+    description: "Cleaned live snapshot of my Sleeper league's rosters. One row per rostered player. Only includes players currently on a roster in the league -- not the full NFL player pool."
+    columns:
+      - name: roster_id
+        description: "Sleeper's internal ID for a team/roster in the league."
+        data_tests:
+          - not_null
+      - name: sleeper_id
+        description: "Player ID, matches sleeper_id in stg_rosters/fct_player_week."
+        data_tests:
+          - not_null

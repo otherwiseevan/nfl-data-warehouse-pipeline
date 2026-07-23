@@ -31,3 +31,15 @@ models:
           - not_null:
               config:
                 severity: warn
+  
+  - name: fct_player_roster_status
+    description: "Every player-week performance row, left-joined against current Sleeper roster ownership. owner_name is null for players not currently rostered in the league -- useful for surfacing waiver/trade targets. Powers the planned Streamlit app."
+    columns:
+      - name: player_id
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: week
+        data_tests:
+          - not_null
