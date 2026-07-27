@@ -23,6 +23,7 @@ joined as (
         player_week.status,
         sleeper.roster_id,
         sleeper.owner_name,
+        sleeper.is_my_roster,
         sleeper.wins,
         sleeper.losses
     from player_week

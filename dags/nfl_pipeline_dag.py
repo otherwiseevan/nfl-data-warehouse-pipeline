@@ -102,13 +102,13 @@ import requests
 
 def extract_sleeper_league(**context):
     """Pull current league rosters and team/owner info from the
-    Sleeper API. Unlike nfl_data_py's historical data, this is a
-    live snapshot of your specific league right now -- there's no
-    concept of 'season' here in the same sense, just current state.
-    Sleeper's player_id matches the sleeper_id column already
-    present in stg_rosters/fct_player_week, so this joins directly
-    without any fuzzy matching."""
+    Sleeper API. Flags the roster belonging to my own account by
+    matching owner_id against my actual Sleeper user_id (looked up
+    by username), since display names aren't reliable -- they can
+    be changed and are easy to get wrong."""
     league_id = Variable.get("SLEEPER_LEAGUE_ID")
+    my_user_id = Variable.get("SLEEPER_USER_ID")
+
     rosters_resp = requests.get(
         f"https://api.sleeper.app/v1/league/{league_id}/rosters"
     )
@@ -121,18 +121,19 @@ def extract_sleeper_league(**context):
     users_resp.raise_for_status()
     users = users_resp.json()
 
-    # users keyed by user_id so we can look up owner display names
     users_by_id = {u["user_id"]: u.get("display_name", "unknown") for u in users}
 
-    # Flatten: one row per player per roster, tagging the owner name
     rows = []
     for roster in rosters:
-        owner_name = users_by_id.get(roster.get("owner_id"), "unknown")
+        owner_id = roster.get("owner_id")
+        owner_name = users_by_id.get(owner_id, "unknown")
+        is_my_roster = owner_id == my_user_id
         for player_id in roster.get("players") or []:
             rows.append({
                 "roster_id": roster["roster_id"],
-                "owner_id": roster.get("owner_id"),
+                "owner_id": owner_id,
                 "owner_name": owner_name,
+                "is_my_roster": is_my_roster,
                 "sleeper_id": player_id,
                 "wins": roster.get("settings", {}).get("wins"),
                 "losses": roster.get("settings", {}).get("losses"),
