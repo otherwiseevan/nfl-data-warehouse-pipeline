@@ -43,3 +43,16 @@ models:
       - name: week
         data_tests:
           - not_null
+  
+  - name: fct_player_game_stats
+    description: "One row per player per game, with full box-score stats and fantasy_points computed using the league's actual half-PPR/Superflex scoring rules. This is the stats table the Streamlit app reads from."
+    columns:
+      - name: player_id
+        data_tests:
+          - not_null
+      - name: week
+        data_tests:
+          - not_null
+      - name: fantasy_points
+        data_tests:
+          - not_null

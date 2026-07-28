@@ -40,3 +40,10 @@ models:
         description: "Player ID, matches sleeper_id in stg_rosters/fct_player_week."
         data_tests:
           - not_null
+  
+  - name: stg_pbp_player_stats
+    description: "Play-by-play data with the full set of player-attributed columns needed for fantasy scoring (passing, rushing, receiving, fumbles, kicking)."
+    columns:
+      - name: game_id
+        data_tests:
+          - not_null
