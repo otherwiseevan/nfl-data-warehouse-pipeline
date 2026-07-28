@@ -12,3 +12,7 @@ dbt-duckdb==1.8.1
 
 # --- Utilities ---
 python-dotenv==1.0.1
+
+# --- Streamlit ---
+streamlit==1.38.0
+plotly==5.24.1
