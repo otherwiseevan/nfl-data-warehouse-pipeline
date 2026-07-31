@@ -92,6 +92,18 @@ if view == "My Roster":
         st.info("No performance data yet for the selected season.")
         print("my_data is empty, showing info message", flush=True)
     else:
+        available_weeks = sorted(my_data["week"].unique())
+        week_range = st.slider(
+            "Week range",
+            min_value=min(available_weeks),
+            max_value=max(available_weeks),
+            value=(min(available_weeks), max(available_weeks)),
+        )
+        print(f"week_range selected: {week_range}", flush=True)
+
+        my_data = my_data[my_data["week"].between(week_range[0], week_range[1])]
+        print(f"my_data filtered by week range: {my_data.shape}", flush=True)
+
         print("computing season_totals groupby", flush=True)
         season_totals = (
             my_data.groupby(["player_name", "position"], as_index=False)
@@ -131,15 +143,48 @@ if view == "My Roster":
         st.plotly_chart(fig, use_container_width=True)
         print("st.plotly_chart rendered", flush=True)
 
-        stat_cols = st.columns(3)
-        with stat_cols[0]:
-            st.metric("Targets", int(player_weeks["targets"].sum()))
-        with stat_cols[1]:
-            st.metric("Receiving Yards", int(player_weeks["receiving_yards"].sum()))
-        with stat_cols[2]:
-            st.metric("Rushing Yards", int(player_weeks["rushing_yards"].sum()))
-        print("st.metric columns rendered", flush=True)
+        selected_position = player_weeks["position"].iloc[0] if not player_weeks.empty else None
+        print(f"selected_player position: {selected_position}", flush=True)
 
+        position_metrics = {
+            "QB": [
+                ("Pass Attempts", "pass_attempts"),
+                ("Completions", "completions"),
+                ("Passing Yards", "passing_yards"),
+                ("Passing TDs", "passing_tds"),
+                ("Interceptions", "interceptions"),
+            ],
+            "RB": [
+                ("Rush Attempts", "rush_attempts"),
+                ("Rushing Yards", "rushing_yards"),
+                ("Rushing TDs", "rushing_tds"),
+                ("Targets", "targets"),
+                ("Receiving Yards", "receiving_yards"),
+            ],
+            "WR": [
+                ("Targets", "targets"),
+                ("Receptions", "receptions"),
+                ("Receiving Yards", "receiving_yards"),
+                ("Receiving TDs", "receiving_tds"),
+            ],
+            "TE": [
+                ("Targets", "targets"),
+                ("Receptions", "receptions"),
+                ("Receiving Yards", "receiving_yards"),
+                ("Receiving TDs", "receiving_tds"),
+            ],
+        }
+
+        metrics_to_show = position_metrics.get(
+            selected_position,
+            [("Targets", "targets"), ("Receiving Yards", "receiving_yards"), ("Rushing Yards", "rushing_yards")],
+        )
+
+        stat_cols = st.columns(len(metrics_to_show))
+        for col, (label, field) in zip(stat_cols, metrics_to_show):
+            with col:
+                st.metric(label, int(player_weeks[field].sum()))
+        print(f"st.metric columns rendered for position {selected_position}", flush=True)
 else:
     st.header("Trade & Waiver Targets")
     print("entering Trade & Waiver Targets branch", flush=True)
@@ -169,6 +214,52 @@ else:
     min_week = st.slider("Minimum games played", 1, 17, 3)
     print(f"min_week selected: {min_week}", flush=True)
 
+    available_positions = ['QB','RB','TE','WR']#sorted(pool_data["position"].dropna().unique())
+    position_filter = st.selectbox("Position", available_positions)
+    print(f"position_filter selected: {position_filter}", flush=True)
+
+    pool_data = pool_data[pool_data["position"] == position_filter]
+    print(f"pool_data filtered by position: {pool_data.shape}", flush=True)
+
+    position_agg = {
+        "QB": {
+            "pass_attempts": ("pass_attempts", "sum"),
+            "completions": ("completions", "sum"),
+            "passing_yards": ("passing_yards", "sum"),
+            "passing_tds": ("passing_tds", "sum"),
+            "interceptions": ("interceptions", "sum"),
+        },
+        "RB": {
+            "rush_attempts": ("rush_attempts", "sum"),
+            "rushing_yards": ("rushing_yards", "sum"),
+            "rushing_tds": ("rushing_tds", "sum"),
+            "targets": ("targets", "sum"),
+            "receiving_yards": ("receiving_yards", "sum"),
+        },
+        "WR": {
+            "targets": ("targets", "sum"),
+            "receptions": ("receptions", "sum"),
+            "receiving_yards": ("receiving_yards", "sum"),
+            "receiving_tds": ("receiving_tds", "sum"),
+        },
+        "TE": {
+            "targets": ("targets", "sum"),
+            "receptions": ("receptions", "sum"),
+            "receiving_yards": ("receiving_yards", "sum"),
+            "receiving_tds": ("receiving_tds", "sum"),
+        },
+    }
+
+    # Fallback for any position not in the dict above.
+    extra_aggs = position_agg.get(
+        position_filter,
+        {
+            "targets": ("targets", "sum"),
+            "rushing_yards": ("rushing_yards", "sum"),
+            "receiving_yards": ("receiving_yards", "sum"),
+        },
+    )
+
     print("computing leaderboard groupby", flush=True)
     leaderboard = (
         pool_data.groupby(["player_name", "position", "team", "owner_name"], as_index=False)
@@ -176,9 +267,7 @@ else:
             games=("week", "nunique"),
             total_fantasy_points=("fantasy_points", "sum"),
             avg_fantasy_points=("fantasy_points", "mean"),
-            targets=("targets", "sum"),
-            rushing_yards=("rushing_yards", "sum"),
-            receiving_yards=("receiving_yards", "sum"),
+            **extra_aggs,
         )
     )
     print(f"leaderboard computed: {leaderboard.shape}", flush=True)

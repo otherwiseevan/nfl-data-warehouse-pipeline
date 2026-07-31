@@ -31,7 +31,7 @@ DBT_ENV_PREFIX = (
 )
 
 default_args = {
-    "owner": "yeb",
+    "owner": "Evan",
     "retries": 2,
     "retry_delay": timedelta(minutes=5),
 }
@@ -96,8 +96,6 @@ def extract_rosters(**context):
     con.close()
 
 import requests
-
-
 
 
 def extract_sleeper_league(**context):
