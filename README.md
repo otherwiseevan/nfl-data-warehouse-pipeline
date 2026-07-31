@@ -8,7 +8,7 @@ This started as an extension of an existing fantasy football ML project — the 
 
 ```
 nfl_data_py (2024-present)  --\
-                                 --> raw tables (DuckDB) --> dbt staging --> dbt marts --> Streamlit app
+--> raw tables (DuckDB) --> dbt staging --> dbt marts --> Streamlit app
 Sleeper API (live snapshot) --/
 ```
 
