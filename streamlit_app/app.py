@@ -54,6 +54,9 @@ roster_status = load_roster_status()
 print("calling load_game_stats()", flush=True)
 game_stats = load_game_stats()
 
+# Deep copies -- avoids a segfault caused by Streamlit's Arrow
+# serialization touching the same cached DataFrame object across
+# multiple reruns. See README "Data quality" section for details.
 roster_status = roster_status.copy(deep=True)
 game_stats = game_stats.copy(deep=True)
 
@@ -64,6 +67,10 @@ combined = game_stats.merge(
     how="left",
 )
 combined = combined[combined["position"] != "K"]
+
+# Team's total targets for that season/week, attached to every row --
+# used to compute each player's target share (targets / team targets).
+combined["team_targets"] = combined.groupby(["season", "week", "team"])["targets"].transform("sum")
 
 print(f"merge done: {combined.shape}", flush=True)
 
@@ -111,6 +118,7 @@ if view == "My Roster":
                 games=("week", "nunique"),
                 fantasy_points=("fantasy_points", "sum"),
                 targets=("targets", "sum"),
+                team_targets=("team_targets", "sum"),
                 receptions=("receptions", "sum"),
                 receiving_yards=("receiving_yards", "sum"),
                 rushing_yards=("rushing_yards", "sum"),
@@ -118,6 +126,9 @@ if view == "My Roster":
                 total_tds=("passing_tds", lambda s: s.sum())
             )
             .sort_values("fantasy_points", ascending=False)
+        )
+        season_totals["target_share_pct"] = (
+            (season_totals["targets"] / season_totals["team_targets"] * 100).round(1)
         )
         print(f"season_totals computed: {season_totals.shape}", flush=True)
 
@@ -175,6 +186,8 @@ if view == "My Roster":
             ],
         }
 
+        # Fallback for any position not in the dict above (rare, but
+        # better than crashing if something unexpected shows up).
         metrics_to_show = position_metrics.get(
             selected_position,
             [("Targets", "targets"), ("Receiving Yards", "receiving_yards"), ("Rushing Yards", "rushing_yards")],
@@ -185,6 +198,7 @@ if view == "My Roster":
             with col:
                 st.metric(label, int(player_weeks[field].sum()))
         print(f"st.metric columns rendered for position {selected_position}", flush=True)
+
 else:
     st.header("Trade & Waiver Targets")
     print("entering Trade & Waiver Targets branch", flush=True)
@@ -214,7 +228,7 @@ else:
     min_week = st.slider("Minimum games played", 1, 17, 3)
     print(f"min_week selected: {min_week}", flush=True)
 
-    available_positions = ['QB','RB','TE','WR']#sorted(pool_data["position"].dropna().unique())
+    available_positions = ["QB", "RB", "WR", "TE"]
     position_filter = st.selectbox("Position", available_positions)
     print(f"position_filter selected: {position_filter}", flush=True)
 
@@ -267,10 +281,18 @@ else:
             games=("week", "nunique"),
             total_fantasy_points=("fantasy_points", "sum"),
             avg_fantasy_points=("fantasy_points", "mean"),
+            team_targets=("team_targets", "sum"),
             **extra_aggs,
         )
     )
     print(f"leaderboard computed: {leaderboard.shape}", flush=True)
+
+    # Only pass-catching positions have a "targets" column from
+    # extra_aggs -- QB won't, so guard against a KeyError there.
+    if "targets" in leaderboard.columns:
+        leaderboard["target_share_pct"] = (
+            (leaderboard["targets"] / leaderboard["team_targets"] * 100).round(1)
+        )
 
     leaderboard = leaderboard[leaderboard["games"] >= min_week]
     leaderboard["avg_fantasy_points"] = leaderboard["avg_fantasy_points"].round(2)
